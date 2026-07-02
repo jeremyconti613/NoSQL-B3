@@ -1,0 +1,72 @@
+services:
+  neo4j:
+    image: neo4j:5-community
+    environment:
+      NEO4J_AUTH: ${NEO4J_AUTH:-neo4j/musicgraph_password}
+      # Container-side ports for the browser UI (7474) and Bolt (7687).
+      NEO4J_server_default__listen__address: 0.0.0.0
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: musicgraph-backend:local
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    environment:
+      NEO4J_URI: ${NEO4J_URI:-bolt://neo4j:7687}
+      NEO4J_USER: ${NEO4J_USER:-neo4j}
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-musicgraph_password}
+      BACKEND_PORT: ${BACKEND_PORT:-8080}
+      MUSICBRAINZ_USER_AGENT: ${MUSICBRAINZ_USER_AGENT:-MusicGraph/0.1 ( https://github.com/example/musicgraph )}
+      MUSICBRAINZ_BASE_URL: ${MUSICBRAINZ_BASE_URL:-https://musicbrainz.org/ws/2}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:5173}
+      SEED_FILE: ${SEED_FILE:-/app/data/seed.json}
+    ports:
+      - "8080:8080"
+
+  # One-shot job: seeds Neo4j from the committed data/seed.json snapshot (or
+  # live from MusicBrainz if that file is absent), then exits. Safe to
+  # re-run: every write is idempotent (MERGE keyed on MBID).
+  seed:
+    image: musicgraph-backend:local
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    environment:
+      NEO4J_URI: ${NEO4J_URI:-bolt://neo4j:7687}
+      NEO4J_USER: ${NEO4J_USER:-neo4j}
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-musicgraph_password}
+      MUSICBRAINZ_USER_AGENT: ${MUSICBRAINZ_USER_AGENT:-MusicGraph/0.1 ( https://github.com/example/musicgraph )}
+      MUSICBRAINZ_BASE_URL: ${MUSICBRAINZ_BASE_URL:-https://musicbrainz.org/ws/2}
+      SEED_FILE: ${SEED_FILE:-/app/data/seed.json}
+    command: ["./seed"]
+    restart: "no"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8080/api}
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
+
+volumes:
+  neo4j_data:
+  neo4j_logs:

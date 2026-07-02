@@ -1,0 +1,23 @@
+# Rust
+/backend/target/
+**/*.rs.bk
+Cargo.lock.bak
+
+# Node / frontend
+/frontend/node_modules/
+/frontend/dist/
+/frontend/.vite/
+
+# Env
+.env
+.env.local
+
+# Neo4j local data (if run outside docker)
+/neo4j/data/
+/neo4j/logs/
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
